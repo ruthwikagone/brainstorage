@@ -13,11 +13,35 @@ import {
 import API from "../Api/api";
 import { filterItemsByUser } from "../utils/userScope";
 
+type LinkItem = {
+  id?: number;
+  user?: {
+    id?: number | string | null;
+  } | null;
+  userId?: number | string | null;
+  title?: string;
+  url?: string;
+  link?: string;
+  description?: string;
+  notes?: string;
+  date?: string;
+  linkDate?: string;
+  createdAt?: string;
+};
+
+const normalizeLink = (item: LinkItem): LinkItem => ({
+  ...item,
+  title: item.title || "",
+  url: item.url || item.link || "",
+  description: item.description || item.notes || "",
+  date: item.date || item.linkDate || "",
+});
+
 export default function LinksScreen() {
   const router = useRouter();
-  const listRef = useRef<FlatList<any> | null>(null);
+  const listRef = useRef<FlatList<LinkItem> | null>(null);
   const { userId, email = "" } = useLocalSearchParams<{ userId?: string; email?: string }>();
-  const [links, setLinks] = useState<any[]>([]);
+  const [links, setLinks] = useState<LinkItem[]>([]);
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
   const [description, setDescription] = useState("");
@@ -36,7 +60,7 @@ export default function LinksScreen() {
       const res = await API.get("/api/links", {
         params: { userId: Number(userId) },
       });
-      const items = Array.isArray(res.data) ? res.data : [];
+      const items = Array.isArray(res.data) ? res.data.map((item) => normalizeLink(item)) : [];
       setLinks(filterItemsByUser(items, userId));
     } catch (error: any) {
       setMessage(String(error?.response?.data || error?.message || "Failed to load links."));
@@ -51,6 +75,26 @@ export default function LinksScreen() {
     setEditingId(null);
   };
 
+  const upsertLink = (item: LinkItem) => {
+    const normalizedItem = normalizeLink(item);
+
+    setLinks((currentLinks) => {
+      const existingIndex = currentLinks.findIndex((currentLink) => currentLink.id === normalizedItem.id);
+
+      if (existingIndex === -1) {
+        return [normalizedItem, ...currentLinks];
+      }
+
+      const updatedLinks = [...currentLinks];
+      updatedLinks[existingIndex] = {
+        ...updatedLinks[existingIndex],
+        ...normalizedItem,
+      };
+
+      return updatedLinks;
+    });
+  };
+
   const saveLink = async () => {
     if (!userId) {
       setMessage("Missing user id. Please log in again.");
@@ -58,14 +102,30 @@ export default function LinksScreen() {
     }
 
     try {
+      const resolvedTitle = title.trim();
+      const resolvedUrl = url.trim();
+      const resolvedDescription = description.trim();
+      const resolvedDate = linkDate.trim();
+      const savedDraft = normalizeLink({
+        id: editingId ?? undefined,
+        title: resolvedTitle,
+        url: resolvedUrl,
+        description: resolvedDescription,
+        date: resolvedDate,
+      });
+
       await API.post("/api/links", {
         ...(editingId ? { id: editingId } : {}),
-        title,
-        url,
-        description,
-        date: linkDate,
+        title: resolvedTitle,
+        url: resolvedUrl,
+        link: resolvedUrl,
+        description: resolvedDescription,
+        notes: resolvedDescription,
+        date: resolvedDate,
+        linkDate: resolvedDate,
         user: { id: Number(userId) },
       });
+      upsertLink(savedDraft);
       resetForm();
       setMessage(editingId ? "Link updated successfully." : "Link added successfully.");
       await fetchLinks();
@@ -74,13 +134,15 @@ export default function LinksScreen() {
     }
   };
 
-  const editLink = (link: any) => {
-    setEditingId(link?.id ?? null);
-    setTitle(link?.title ?? "");
-    setUrl(link?.url ?? "");
-    setDescription(link?.description ?? "");
-    setLinkDate(link?.date ?? link?.createdAt ?? "");
-    setMessage(`Editing link #${link?.id ?? ""}`.trim());
+  const editLink = (item: LinkItem) => {
+    const link = normalizeLink(item);
+
+    setEditingId(link.id ?? null);
+    setTitle(link.title ?? "");
+    setUrl(link.url ?? "");
+    setDescription(link.description ?? "");
+    setLinkDate(link.date || link.createdAt || "");
+    setMessage(`Editing link #${link.id ?? ""}`.trim());
   };
 
   const deleteLink = async (linkId?: number) => {

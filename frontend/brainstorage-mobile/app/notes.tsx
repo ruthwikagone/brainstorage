@@ -12,11 +12,36 @@ import {
 import API from "../Api/api";
 import { filterItemsByUser } from "../utils/userScope";
 
+type NoteItem = {
+  id?: number;
+  user?: {
+    id?: number | string | null;
+  } | null;
+  userId?: number | string | null;
+  title?: string;
+  content?: string;
+  description?: string;
+  note?: string;
+  body?: string;
+  tags?: string;
+  date?: string;
+  noteDate?: string;
+  createdAt?: string;
+};
+
+const normalizeNote = (item: NoteItem): NoteItem => ({
+  ...item,
+  title: item.title || "",
+  content: item.content || item.description || item.note || item.body || "",
+  tags: item.tags || "",
+  date: item.date || item.noteDate || "",
+});
+
 export default function NotesScreen() {
   const router = useRouter();
-  const listRef = useRef<FlatList<any> | null>(null);
+  const listRef = useRef<FlatList<NoteItem> | null>(null);
   const { userId, email = "" } = useLocalSearchParams<{ userId?: string; email?: string }>();
-  const [notes, setNotes] = useState<any[]>([]);
+  const [notes, setNotes] = useState<NoteItem[]>([]);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [tags, setTags] = useState("");
@@ -35,7 +60,7 @@ export default function NotesScreen() {
       const res = await API.get("/api/notes", {
         params: { userId: Number(userId) },
       });
-      const items = Array.isArray(res.data) ? res.data : [];
+      const items = Array.isArray(res.data) ? res.data.map((item) => normalizeNote(item)) : [];
       setNotes(filterItemsByUser(items, userId));
     } catch (error: any) {
       setMessage(String(error?.response?.data || error?.message || "Failed to load notes."));
@@ -50,6 +75,26 @@ export default function NotesScreen() {
     setEditingId(null);
   };
 
+  const upsertNote = (item: NoteItem) => {
+    const normalizedItem = normalizeNote(item);
+
+    setNotes((currentNotes) => {
+      const existingIndex = currentNotes.findIndex((currentNote) => currentNote.id === normalizedItem.id);
+
+      if (existingIndex === -1) {
+        return [normalizedItem, ...currentNotes];
+      }
+
+      const updatedNotes = [...currentNotes];
+      updatedNotes[existingIndex] = {
+        ...updatedNotes[existingIndex],
+        ...normalizedItem,
+      };
+
+      return updatedNotes;
+    });
+  };
+
   const saveNote = async () => {
     if (!userId) {
       setMessage("Missing user id. Please log in again.");
@@ -57,14 +102,31 @@ export default function NotesScreen() {
     }
 
     try {
+      const resolvedTitle = title.trim();
+      const resolvedContent = content.trim();
+      const resolvedTags = tags.trim();
+      const resolvedDate = noteDate.trim();
+      const savedDraft = normalizeNote({
+        id: editingId ?? undefined,
+        title: resolvedTitle,
+        content: resolvedContent,
+        tags: resolvedTags,
+        date: resolvedDate,
+      });
+
       await API.post("/api/notes", {
         ...(editingId ? { id: editingId } : {}),
-        title,
-        content,
-        tags,
-        date: noteDate,
+        title: resolvedTitle,
+        content: resolvedContent,
+        description: resolvedContent,
+        note: resolvedContent,
+        body: resolvedContent,
+        tags: resolvedTags,
+        date: resolvedDate,
+        noteDate: resolvedDate,
         user: { id: Number(userId) },
       });
+      upsertNote(savedDraft);
       resetForm();
       setMessage(editingId ? "Note updated successfully." : "Note added successfully.");
       await fetchNotes();
@@ -73,16 +135,23 @@ export default function NotesScreen() {
     }
   };
 
-  const editNote = (note: any) => {
-    setEditingId(note?.id ?? null);
-    setTitle(note?.title ?? "");
-    setContent(note?.content ?? "");
-    setTags(note?.tags ?? "");
-    setNoteDate(note?.date ?? note?.createdAt ?? "");
-    setMessage(`Editing note #${note?.id ?? ""}`.trim());
+  const editNote = (item: NoteItem) => {
+    const note = normalizeNote(item);
+
+    setEditingId(note.id ?? null);
+    setTitle(note.title ?? "");
+    setContent(note.content ?? "");
+    setTags(note.tags ?? "");
+    setNoteDate(note.date || note.createdAt || "");
+    setMessage(`Editing note #${note.id ?? ""}`.trim());
   };
 
-  const deleteNote = async (id: number) => {
+  const deleteNote = async (id?: number) => {
+    if (!id) {
+      setMessage("Note id is missing.");
+      return;
+    }
+
     try {
       await API.delete(`/api/notes/${id}`);
       if (editingId === id) {
