@@ -1,25 +1,35 @@
-import { View, Text } from "react-native";
+import { View, Text, Alert } from "react-native";
 import { useState } from "react";
 import API from "../Api/api";
 import Button from "../components/CustomButton";
 import InputField from "../components/InputField";
 
 export default function Login({ navigation }) {
-  const [data, setData] = useState({ email: "", password: "" });
+  const [data, setData] = useState({
+    email: "",
+    password: "",
+  });
 
   const login = async () => {
+    if (!data.email || !data.password) {
+      return Alert.alert("Error", "Enter email and password");
+    }
+
     try {
       const res = await API.post("/auth/login", data);
 
-      alert(res.data);
+      const userId = res.data.user.id; // ✅ dynamic id from backend
 
-      // ⭐ IMPORTANT: manually set userId (backend doesn't return user yet)
-      const userId = 1; // TEMP (later we improve)
+      Alert.alert("Success", "Login successful");
 
       navigation.navigate("Dashboard", { userId });
 
     } catch (err) {
-      alert("Login failed");
+      console.log(err.response?.data || err.message);
+      Alert.alert(
+        "Login Failed",
+        err.response?.data?.message || "Invalid credentials"
+      );
     }
   };
 
@@ -27,8 +37,16 @@ export default function Login({ navigation }) {
     <View style={{ padding: 20 }}>
       <Text style={{ fontSize: 24 }}>Login</Text>
 
-      <InputField placeholder="Email" onChange={(v) => setData({ ...data, email: v })} />
-      <InputField placeholder="Password" secure onChange={(v) => setData({ ...data, password: v })} />
+      <InputField
+        placeholder="Email"
+        onChange={(v) => setData({ ...data, email: v })}
+      />
+
+      <InputField
+        placeholder="Password"
+        secure
+        onChange={(v) => setData({ ...data, password: v })}
+      />
 
       <Button title="Login" onPress={login} />
 
