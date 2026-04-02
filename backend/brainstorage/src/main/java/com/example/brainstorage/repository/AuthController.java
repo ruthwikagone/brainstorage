@@ -3,6 +3,7 @@ package com.brainstorage.controller;
 import com.brainstorage.entity.User;
 import com.brainstorage.service.UserService;
 import org.springframework.web.bind.annotation.*;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/auth")
@@ -23,12 +24,14 @@ public class AuthController {
 
     // LOGIN
     @PostMapping("/login")
-public User login(@RequestBody User request) {
-    return service.login(request.getEmail(), request.getPassword());
-}
-
+    public Map<String, Object> login(@RequestBody User request) {
         User user = service.login(request.getEmail(), request.getPassword());
 
-        return "Login successful for: " + user.getName();
+        return Map.of(
+                "message", "Login successful",
+                "userId", user.getId(),
+                "name", user.getName(),
+                "email", user.getEmail()
+        );
     }
 }
